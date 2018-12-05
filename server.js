@@ -12,50 +12,51 @@ app.listen(PORT, () => {
   console.log(`listening on ${PORT}`);
 });
 
+// Error Handler
 function handleError(err, res) {
   console.error(err);
   if (res) res.status(500).send('This location is not a valid input');
 }
 
-app.use(express.static('./city-explorer-client'));
-
-app.get('/home', function(req, res) {
-  res.sendFile(`${__dirname}/index.html`);
-});
-
+// Requests location data
 app.get('/location', (req, res) => {
-  const locationData = searchToLatLong(req.query.data);
-  res.send(locationData);
+  searchToLatLong(req.query.data).then(location => res.send(location)).catch(error => handleError(error, res));
 });
 
-function Location(data) {
-  this.formatted_query = data.formatted_address;
-  this.latitude = data.geometry.location.lat;
-  this.longitude = data.geometry.location.lng;
+// Requests weather data
+app.get('/weather', getWeather);
+
+// Location constructor
+function Location(query, res) {
+  this.formatted_query = res.body.results[0].formatted_address;
+  this.latitude = res.body.results[0].geometry.location.lat;
+  this.longitude = res.body.results[0].geometry.location.lng;
+  this.search_query = query;
 }
 
+// Weather constructor
+function Weather(day) {
+  this.forecast = day.summary;
+  this.current_time = new Date(day.time * 1000).toDateString();
+}
+
+// Helper function for location
 function searchToLatLong(query) {
-  if (!query) {console.error('500: Invalid location data');}
-  const geoData = require('./data/geo.json');
-  const location = new Location(geoData.results[0]);
-  location.search_query = query;
-  return location;
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${query}&key=${process.env.GEOCODE_API_KEY}`;
+
+  return superagent.get(url).then(res => {
+    return new Location(query, res)
+  }).catch(error => handleError(error));
 }
 
-app.get('/weather', (req, res) => {
-  const weatherData = searchWeather(req.query.data);
-  res.send(weatherData);
-});
+// Helper function for weather
+function getWeather(req, res) {
+  const url = `https://api.darksky.net/forecast/${process.env.WEATHER_API_KEY}/${req.query.data.latitude},${req.query.data.longitude}`;
 
-function Weather(data) {
-  this.forecast = data.summary;
-  this.current_time = data.time;
-}
-
-function searchWeather(query) {
-  if (!query) {console.error('500: Invalid location data');}
-  const weatherData = require('./data/weather.json');
-  const weather = new Weather(weatherData.currently);
-  weather.search_query = query;
-  return weather;
+  superagent.get(url).then(result => {
+    const weatherSummaries = result.body.daily.data.map(day => {
+      return new Weather(day);
+    });
+    res.send(weatherSummaries);
+  }).catch(error => handleError(error));
 }

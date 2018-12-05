@@ -6,7 +6,6 @@ const superagent = require('superagent');
 require('dotenv').config();
 const PORT = process.env.PORT || 3000;
 const app = express();
-
 app.use(cors());
 app.listen(PORT, () => {
   console.log(`listening on ${PORT}`);
@@ -26,6 +25,12 @@ app.get('/location', (req, res) => {
 // Requests weather data
 app.get('/weather', getWeather);
 
+// Requests restaurant data
+app.get('/yelp', getRestaurants);
+
+// Requests movie data
+app.get('/movies', getMovies);
+
 // Location constructor
 function Location(query, res) {
   this.formatted_query = res.body.results[0].formatted_address;
@@ -38,6 +43,26 @@ function Location(query, res) {
 function Weather(day) {
   this.forecast = day.summary;
   this.current_time = new Date(day.time * 1000).toDateString();
+}
+
+// Restaurant constructor for Yelp
+function Restaurant(business) {
+  this.name = business.name;
+  this.image_url = business.image_url;
+  this.price = business.price;
+  this.rating = business.rating;
+  this.url = business.url;
+}
+
+// Movie data constructor
+function Movie(data) {
+  this.title = data.title;
+  this.overview = data.overview;
+  this.average_votes = data.vote_average;
+  this.total_votes = data.vote_count;
+  this.image_url = `https://image.tmdb.org/t/p/w200_and_h300_bestv2/${data.poster_path}`;
+  this.popularity = data.popularity;
+  this.released_on = data.release_date;
 }
 
 // Helper function for location
@@ -58,5 +83,29 @@ function getWeather(req, res) {
       return new Weather(day);
     });
     res.send(weatherSummaries);
+  }).catch(error => handleError(error));
+}
+
+// Helper function for Yelp
+function getRestaurants(req, res) {
+  const url = `https://api.yelp.com/v3/businesses/search?location=${req.query.data.search_query}`;
+
+  superagent.get(url).set('Authorization', `Bearer ${process.env.YELP_API_KEY}`).then(result => {
+    const yelpInfo = result.body.businesses.map(business => {
+      return new Restaurant(business);
+    });
+    res.send(yelpInfo);
+  }).catch(error => handleError(error));
+}
+
+// Helper function for movies
+function getMovies(req, res) {
+  const url = `https://api.themoviedb.org/3/search/movie?api_key=${process.env.MOVIEDB_API_KEY}&query=${req.query.data.search_query}`;
+
+  superagent.get(url).then(result => {
+    const movieData = result.body.results.map(data => {
+      return new Movie(data);
+    });
+    res.send(movieData);
   }).catch(error => handleError(error));
 }
